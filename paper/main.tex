@@ -111,17 +111,19 @@ Table~\ref{tab:models} lists the seven regression algorithms compared, each wrap
 \caption{Candidate Regression Models}
 \label{tab:models}
 \centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}ll@{}}
 \toprule
 \textbf{Model} & \textbf{Role in comparison} \\
 \midrule
 Linear Regression & Interpretable linear baseline \\
 Ridge Regression & Regularized linear baseline \\
-Support Vector Regression (RBF) & Nonlinear kernel baseline \\
+SVR (RBF kernel) & Nonlinear kernel baseline \\
 Random Forest \cite{breiman2001} & Nonlinear tree ensemble \\
 XGBoost \cite{chen2016} & Regularized gradient-boosted trees \\
 Hist.\ Gradient Boosting & Independent boosting implementation \\
-Gaussian Process Regression \cite{rasmussen2006} & Nonlinear surface + calibrated uncertainty \\
+Gaussian Process Reg. \cite{rasmussen2006} & Nonlinear surface + calibrated uncertainty \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -176,6 +178,8 @@ Table~\ref{tab:cvresults} summarizes five-fold cross-validation $R^2$ for all se
 \caption{Five-Fold Cross-Validation $R^2$ by Model and Target (Mean-of-Folds; Best Model per Target in Bold)}
 \label{tab:cvresults}
 \centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}lccc c@{}}
 \toprule
 \textbf{Model} & $R^2(L_c)$ & $R^2(L_e)$ & $R^2(D)$ & $R^2_{\text{pooled}}(D)$ \\
@@ -205,13 +209,15 @@ Table~\ref{tab:comparison} compares this work's pooled-CV results for $D$ agains
 \caption{Pooled Cross-Validation Comparison for Interface Deflection $D$}
 \label{tab:comparison}
 \centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}llcc@{}}
 \toprule
-\textbf{Source} & \textbf{Model} & $R^2_{\text{pooled}}$ & \textbf{MAE (mm)} \\
+\textbf{Source} & \textbf{Model} & $R^2_{\text{pooled}}$ & \textbf{MAE} \\
 \midrule
-Zhang \& Cheng \cite{zhang_cheng2022} & Random Forest & 0.78 & 0.28 \\
-This work & Random Forest & 0.508 & 0.45 \\
-This work & \textbf{Gaussian Process (selected)} & \textbf{0.713} & \textbf{0.33} \\
+Zhang \& Cheng \cite{zhang_cheng2022} & Random Forest & 0.78 & 0.28 mm \\
+This work & Random Forest & 0.508 & 0.45 mm \\
+This work & \textbf{GPR (selected)} & \textbf{0.713} & \textbf{0.33 mm} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -242,6 +248,8 @@ As a demonstration of the optimizer described in Section~IV-H, we specified a ta
 \caption{Automated Inverse Design: Recommended Set-Points for Target $D=0$}
 \label{tab:optimization}
 \centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}cc c cc@{}}
 \toprule
 \textbf{Heater} & \textbf{Set-point (K)} & & \textbf{Predicted} & \textbf{Value} \\
@@ -264,6 +272,8 @@ Table~\ref{tab:multioutput} compares jointly trained multi-output models against
 \caption{Multi-Output versus Independent Modeling (Mean CV $R^2$ Across Targets)}
 \label{tab:multioutput}
 \centering
+\footnotesize
+\setlength{\tabcolsep}{3pt}
 \begin{tabular}{@{}lcc@{}}
 \toprule
 \textbf{Model} & \textbf{Joint (multi-output)} & \textbf{Avg.\ of independent} \\
