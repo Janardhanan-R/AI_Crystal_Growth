@@ -34,6 +34,7 @@ import warnings
 import pandas as pd
 
 from src.data_loader import (
+    DATASET_CITATION,
     INPUT_FEATURES,
     TARGET_DESCRIPTIONS,
     TARGETS,
@@ -70,13 +71,16 @@ def main():
     section("STEP 1-2: Load raw dataset and verify targets")
     df_raw = load_raw("data/Table.csv")
     print(f"Loaded data/Table.csv: {df_raw.shape[0]} rows x {df_raw.shape[1]} columns")
+    print(f"Source (cite in any paper/report using this data): {DATASET_CITATION}")
+    print("SIMULATION data (CrysMAS finite-volume, 2D axis-symmetric, BaBrCl in a "
+          "5-heater vertical Bridgman furnace) -- not physical experimental measurements.")
     identity_check = verify_identities(df_raw)
     print("Target verification (see src/data_loader.py docstring for full detail):")
     for t in TARGETS:
         print(f"  - {t}: {TARGET_DESCRIPTIONS[t]}")
     print(f"  - P (m) excluded from modeling (per user confirmation): "
           f"P = (Lc+Le)/2 exactly, max abs error {identity_check['max_abs_error_P_identity']:.2e}")
-    print(f"  - D relabeled from 'Crystal Diameter' to 'interface separation (Lc-Le)': "
+    print(f"  - D relabeled from 'Crystal Diameter' to 'interface deflection (Lc-Le)': "
           f"max abs error vs Lc-Le {identity_check['max_abs_error_D_identity']:.2e}")
 
     # ------------------------------------------------------------------- 3

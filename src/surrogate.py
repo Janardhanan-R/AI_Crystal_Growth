@@ -1,33 +1,48 @@
 """
 surrogate.py
 ============
-A fast, data-driven surrogate model for Lc, Le, D as functions of the five
-furnace zone temperatures.
+A fast, data-driven surrogate model for Lc, Le, D (melt-crystal interface
+position at centerline, at edge, and their deflection) as functions of the
+five furnace heater set-point temperatures, for a BaBrCl crystal grown in a
+5-heater vertical Bridgman furnace.
 
 What this IS and IS NOT
 -------------------------
-* This is a DATA-DRIVEN SURROGATE MODEL: a statistical function fit to 96
-  simulated/measured (T1..T5) -> (Lc, Le, D) data points. It reproduces the
-  input/output mapping present in that data, nothing more.
-* This is NOT a physics-based digital twin: it contains no heat-transfer,
-  fluid-flow, or interface-thermodynamics equations, and cannot extrapolate
-  outside the physical regime represented by the training data with any
-  guarantee.
+* This is a DATA-DRIVEN SURROGATE FOR A NUMERICAL SIMULATION: the training
+  data (see src/data_loader.py, DATASET_CITATION) is itself the output of a
+  CrysMAS finite-volume, 2D axis-symmetric, steady-state heat-transfer
+  simulation -- not physical furnace measurements. This surrogate is
+  therefore a fast statistical approximation of that slower physics solver
+  (a standard, well-established ML pattern), fit to the 96 (T1..T5) ->
+  (Lc, Le, D) simulation runs provided. It reproduces the input/output
+  mapping the simulation itself produced at those 96 points, nothing more,
+  and inherits whatever fidelity/limitations CrysMAS's own modeling
+  assumptions (2D axis-symmetric, steady-state, conduction+radiation only)
+  already carry.
+* This is NOT a physics-based digital twin of the furnace or crystal:
+  *this* project contains no heat-transfer, fluid-flow, or
+  interface-thermodynamics equations of its own -- CrysMAS (the original
+  simulation) does, but this surrogate only learned its input/output
+  mapping statistically, and cannot extrapolate outside the simulated
+  regime with any guarantee.
 * This is NOT a hybrid digital twin: no physical constraints (e.g. energy
   balance, known monotonicity of interface position with temperature) are
   embedded in the model structure. Such constraints could be added -- e.g.
   as monotonicity constraints in the tree ensembles, or as a physics-based
   mean function in the GPR prior -- but none are implemented here because no
-  governing equations were supplied for this project; doing so would mean
-  inventing physics, which was explicitly ruled out.
-* Because the training data is a 96-point designed experiment (not a large
-  historical process log), this surrogate should be treated as a
-  RESEARCH-STAGE / offline optimization aid, not a validated real-time
-  control component. Its inference latency (measured below, typically
-  sub-millisecond per prediction for every model in this comparison) is
-  fast enough for real-time use, but the STATISTICAL ACCURACY of that
-  real-time use has only been checked against a small held-out test set
-  and 5-fold CV on the same 96-row dataset -- not against independent new
+  governing equations were supplied to this project directly; doing so
+  would mean inventing physics, which was explicitly ruled out.
+* Because the training data is a 96-point simulation design-of-experiment
+  (not a large historical process log, and not independent physical
+  replication), this surrogate should be treated as a RESEARCH-STAGE /
+  offline optimization aid for exploring the CrysMAS simulation's response
+  surface quickly, not as a validated real-time furnace-control component
+  or a substitute for physical experimental validation. Its inference
+  latency (measured below, typically sub-millisecond per prediction for
+  every model in this comparison) is fast enough for real-time use, but the
+  STATISTICAL ACCURACY of that real-time use has only been checked against
+  a small held-out test set and 5-fold CV on the same 96-row simulated
+  dataset -- not against independent new simulation runs or physical
   experiments. That distinction is deliberately kept explicit throughout
   this project's documentation.
 """

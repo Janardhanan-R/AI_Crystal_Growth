@@ -2,45 +2,72 @@
 data_loader.py
 ===============
 Loads the raw Bridgman crystal-growth dataset and documents exactly what the
-columns mean, based on direct inspection of the data (not assumption).
+columns mean, based on direct inspection of the data plus the dataset's
+original source record (not assumption).
 
 Dataset provenance
 -------------------
-Source file: data/Table.csv (uploaded by the user).
-96 rows, 9 columns, no missing values, no duplicate rows. All 96 input
-combinations of (T1..T5) are unique -> this is a small designed-experiment
-(DOE) table, not repeated/batched/time-series measurements.
+Source file: data/Table.csv, originally distributed as:
 
-Column meaning (verified programmatically, see notebooks/ or README for the
-verification code):
+    "Numerical simulation data of melt-crystal interface position and
+    deflection of BaBrCl in a 5-heater vertical Bridgman furnace"
+    Chang Zhang, University of Minnesota
+    Mendeley Data, V1, 7 February 2022
+    DOI: 10.17632/4hr6cx2p8m.1
+    https://data.mendeley.com/datasets/4hr6cx2p8m/1
 
-    T1 (K) .. T5 (K)  : five furnace axial-zone temperatures (Kelvin),
-                        the process/control INPUTS.
-    Lc (m)            : axial position of the crystal-side growth interface
-                        (metres). A genuine, independent modeled quantity.
-    Le (m)            : axial position of the encapsulant/liquid-side
-                        interface (metres). A genuine, independent modeled
-                        quantity.
-    P  (m)            : EXACTLY (Lc + Le) / 2 for every row (verified to
-                        float precision, max abs error ~2.7e-17). This is
-                        the midpoint of the two interface positions. It is
-                        NOT modeled in this project (confirmed with the
-                        user) because it carries no information beyond Lc
-                        and Le.
-    D  (m)            : EXACTLY Lc - Le for every row (verified to float
-                        precision, max abs error ~2.7e-17). This is the
-                        interface SEPARATION / deflection between the two
-                        interfaces, not a crystal diameter. The label
-                        "Crystal Diameter" used in early project notes is
-                        not supported by the data (D takes near-zero and
-                        even slightly NEGATIVE values, which is physically
-                        impossible for a diameter) and has been corrected
-                        here, per user confirmation, to
-                        "interface separation (Lc - Le)".
+**This is SIMULATION-GENERATED data, not physical experimental
+measurements.** It was produced with CrysMAS (finite-volume method, 2D
+axis-symmetric, steady-state heat conduction + radiation) for a BaBrCl
+crystal grown in a 5-heater vertical Bridgman furnace. Every row is one
+CrysMAS run at a different combination of the five heater set-point
+temperatures. Consequently, this project is best described as a
+DATA-DRIVEN SURROGATE FOR A NUMERICAL SIMULATION (a standard, legitimate
+ML pattern: a fast statistical model that approximates a slower physics
+solver), not as a model trained on furnace measurements. Any paper or
+report built on this project MUST cite the Mendeley dataset above and
+state plainly that the underlying data is simulated, not experimental --
+check the dataset's license terms on the Mendeley page before republishing
+it or its derivatives.
 
-TARGETS modeled in this project: Lc, Le, D (D modeled directly from T1..T5,
-per user's explicit choice, and honestly documented as interface
-separation rather than diameter).
+96 rows, 9 columns, no missing values, no duplicate rows. All 96 (T1..T5)
+combinations are unique -> a small simulation design-of-experiment table,
+not repeated/batched/time-series data.
+
+Column meaning (per the dataset's original documentation, cross-checked
+programmatically against the algebraic identities below):
+
+    T1 (K) .. T5 (K)  : target set-point temperatures for the furnace's
+                        five heaters, the simulation INPUTS.
+    Lc (m)            : vertical melt-crystal interface position AT THE
+                        CENTERLINE (radius r = 0 m). A genuine,
+                        independent simulated quantity.
+    Le (m)            : vertical melt-crystal interface position AT THE
+                        EDGE (radius r = 0.0065 m, i.e. at the ampoule
+                        wall). A genuine, independent simulated quantity.
+    P  (m)            : the AVERAGE interface position, EXACTLY
+                        (Lc + Le) / 2 for every row (verified to float
+                        precision, max abs error ~2.7e-17). NOT modeled
+                        in this project (confirmed with the user) because
+                        it carries no information beyond Lc and Le.
+    D  (m)            : the INTERFACE DEFLECTION, EXACTLY Lc - Le for
+                        every row (verified to float precision, max abs
+                        error ~2.7e-17) -- i.e. how much the growth
+                        interface bows between the centerline and the
+                        edge. This is a standard, physically meaningful
+                        quantity in Bridgman crystal growth (interface
+                        curvature relates to radial thermal gradients and
+                        thermal stress), NOT a crystal diameter. An
+                        earlier project brief called this column "Crystal
+                        Diameter"; that label is not supported by the data
+                        (D takes near-zero and slightly NEGATIVE values,
+                        physically impossible for a diameter) and was
+                        corrected, per user confirmation, before any
+                        modeling began.
+
+TARGETS modeled in this project: Lc, Le, D (D modeled directly from
+T1..T5, per the user's explicit choice, and documented honestly as
+interface deflection rather than diameter).
 """
 from __future__ import annotations
 
@@ -63,11 +90,18 @@ TARGETS = ["Lc", "Le", "D"]
 NOT_MODELED = ["P"]  # present in source data, deliberately excluded (see docstring)
 
 TARGET_DESCRIPTIONS = {
-    "Lc": "Axial position of the crystal-side growth interface (m)",
-    "Le": "Axial position of the encapsulant/liquid-side interface (m)",
-    "D": "Interface separation / deflection, D = Lc - Le (m). "
-         "NOT a crystal diameter -- see data_loader module docstring.",
+    "Lc": "Melt-crystal interface position at the centerline, r=0m (m)",
+    "Le": "Melt-crystal interface position at the edge, r=0.0065m (m)",
+    "D": "Interface deflection, D = Lc - Le (m) -- how much the growth "
+         "interface bows between centerline and edge. NOT a crystal "
+         "diameter -- see data_loader module docstring.",
 }
+
+DATASET_CITATION = (
+    "Zhang, Chang (2022), \"Numerical simulation data of melt-crystal "
+    "interface position and deflection of BaBrCl in a 5-heater vertical "
+    "Bridgman furnace\", Mendeley Data, V1, doi: 10.17632/4hr6cx2p8m.1"
+)
 
 
 def load_raw(path: str = "data/Table.csv") -> pd.DataFrame:

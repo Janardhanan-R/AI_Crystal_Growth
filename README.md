@@ -1,58 +1,79 @@
 # Bridgman Crystal Growth ML Surrogate
 
-A data-driven regression pipeline that predicts three Bridgman crystal-growth
-interface-position quantities (**Lc**, **Le**, **D**) from five furnace
-zone temperatures (**T1..T5**), compares seven regression models under
-5-fold cross-validation, and packages the best model per target as a fast
-surrogate for process exploration.
+A data-driven regression pipeline that predicts three melt-crystal
+interface quantities (**Lc**, **Le**, **D**) for a BaBrCl crystal grown in
+a 5-heater vertical Bridgman furnace, from the five heater set-point
+temperatures (**T1..T5**), compares seven regression models under 5-fold
+cross-validation, and packages the best model per target as a fast
+surrogate for exploring the simulation's response surface.
 
-## 0. Critical correction to the original project brief -- read this first
+## 0. Data source and a critical correction to the original project brief -- read this first
 
-The original brief asked for a **"Crystal Diameter" target called D**.
-Direct inspection of the uploaded dataset (`data/Table.csv`, 96 rows) shows
-this is not correct:
+**Data source.** `data/Table.csv` is a numerical-simulation dataset, not
+physical experimental measurements:
+
+> Zhang, Chang (2022), "Numerical simulation data of melt-crystal
+> interface position and deflection of BaBrCl in a 5-heater vertical
+> Bridgman furnace", Mendeley Data, V1, doi: 10.17632/4hr6cx2p8m.1
+> <https://data.mendeley.com/datasets/4hr6cx2p8m/1>
+
+It was generated with **CrysMAS** (finite-volume method, 2D
+axis-symmetric, steady-state heat conduction + radiation) -- each of the
+96 rows is one CrysMAS run at a different combination of the five heater
+set points. **Cite this dataset in any paper or report built on this
+project, and state plainly that the underlying data is simulated, not
+experimental.** Check the license on the Mendeley page before
+republishing the data or derivatives of it.
+
+**Column correction.** The original project brief asked for a **"Crystal
+Diameter" target called D**. The dataset's own documentation (and direct
+inspection of `data/Table.csv`) shows this is not correct:
 
 | Column | What it actually is | Verified relationship |
 |---|---|---|
-| `Lc (m)` | Axial position of the crystal-side growth interface | genuine, independent |
-| `Le (m)` | Axial position of the encapsulant/liquid-side interface | genuine, independent |
-| `P (m)` | Midpoint of the two interfaces | **exactly** `(Lc + Le) / 2` for all 96 rows (max abs error 2.8e-17) |
-| `D (m)` | Interface **separation/deflection**, not a diameter | **exactly** `Lc - Le` for all 96 rows (max abs error 2.7e-17) |
+| `Lc (m)` | Melt-crystal interface position **at the centerline** (r = 0 m) | genuine, independent |
+| `Le (m)` | Melt-crystal interface position **at the edge** (r = 0.0065 m, the ampoule wall) | genuine, independent |
+| `P (m)` | Average interface position | **exactly** `(Lc + Le) / 2` for all 96 rows (max abs error 2.8e-17) |
+| `D (m)` | Interface **deflection** -- how much the interface bows between centerline and edge, not a diameter | **exactly** `Lc - Le` for all 96 rows (max abs error 2.7e-17) |
 
 `D` ranges from about -0.001 m to +0.004 m and is frequently negative --
-physically impossible for a diameter. There is no diameter measurement
-anywhere in the dataset.
+physically impossible for a diameter. There is no diameter in the
+dataset; interface deflection is, however, a standard and physically
+meaningful quantity in Bridgman crystal growth (it relates to radial
+thermal gradients and thermal stress in the growing crystal).
 
-**This was flagged to the user before any modeling began, per the project's
-own "do not fabricate target values or column mappings" requirement.** The
-user confirmed:
+**This mismatch was flagged before any modeling began, per the project's
+own "do not fabricate target values or column mappings" requirement.**
+The user confirmed:
 * `D` should be **modeled directly** as an independent regression target
   from T1..T5 (not derived algebraically from Lc/Le), but must be
-  **documented honestly as "interface separation (Lc - Le)"**, never as
-  "Crystal Diameter", anywhere in this project's code, plots, or tables.
+  **documented honestly as interface deflection**, never as "Crystal
+  Diameter", anywhere in this project's code, plots, or tables.
 * `P` is **not** modeled (it would add no information beyond Lc and Le).
 
 Every module, plot, and table in this repository uses the corrected,
-honest labeling. **Targets modeled: Lc, Le, D** (D = interface separation).
+sourced labeling. **Targets modeled: Lc, Le, D** (D = interface deflection).
 
 ## 1. Dataset
 
 * `data/Table.csv`: 96 rows, 9 columns, **no missing values, no duplicate
-  rows**. Every row is a unique combination of (T1..T5) -- this is a small
-  **designed experiment / factorial grid**, not repeated trials, batches,
-  or a time series.
-* Inputs: `T1 (K)` .. `T5 (K)`, five furnace axial-zone temperatures.
-  T1 has 2 levels, T2/T3/T4 have 3 levels each, T5 has 2 levels (96 of the
-  possible combinations are present).
+  rows**. Every row is a unique (T1..T5) combination from the CrysMAS
+  simulation design -- this is a small **simulation design-of-experiment**,
+  not repeated trials, batches, or a time series, and not independent
+  physical replication.
+* Inputs: `T1 (K)` .. `T5 (K)`, the five furnace heaters' set-point
+  temperatures. T1 has 2 levels, T2/T3/T4 have 3 levels each, T5 has 2
+  levels (96 of the possible combinations are present).
 * A small number of rows sit outside the 1.5x-IQR whisker range for
   Lc/Le/P/D (1-3 rows per column) -- these are the most extreme corner
-  points of the temperature grid, not measurement errors, and are **kept**,
+  points of the temperature grid, not simulation errors, and are **kept**,
   not removed (see `src/preprocessing.py`).
 * **Limitation**: n=96 is small for a 7-model comparison with an 80/20
   test split (~19 test rows). Test-set metrics below should be read as
   indicative, not precise generalization estimates. 5-fold CV (run on the
   77-row training split only) is the primary basis for model comparison
-  and selection.
+  and selection. All numbers describe fit to this simulation's output, not
+  validation against physical furnace measurements.
 
 ## 2. Feature engineering
 
@@ -141,10 +162,10 @@ target:
 | D  | Gaussian Process | 0.000334 | 0.000536 | 0.665 |
 
 Note the much lower R2 for D across every model (best case 0.665) compared
-to Lc/Le (>0.97). This is expected: D is the small difference of two
-close, similarly-scaled quantities (Lc and Le), so it inherits the noise
-of both while its signal is an order of magnitude smaller -- a harder
-regression problem by construction, not a modeling failure. This is
+to Lc/Le (>0.97). This is expected: D (deflection) is the small difference
+of two close, similarly-scaled quantities (Lc and Le), so it inherits the
+noise of both while its signal is an order of magnitude smaller -- a
+harder regression problem by construction, not a modeling failure. This is
 reported plainly rather than glossed over.
 
 ## 6. Model selection (from CV results only)
@@ -197,10 +218,14 @@ combined -- CV/test were used only to select and validate the approach).
 
 What it is / is not, explicitly:
 
-* **Data-driven surrogate**, not a physics-based or hybrid digital twin.
-  No heat-transfer, fluid-flow, or interface-thermodynamics equations are
-  encoded. No governing equations were supplied for this project, so none
-  were invented.
+* **A data-driven surrogate for the CrysMAS simulation**, not a
+  physics-based or hybrid digital twin in its own right. The training data
+  is itself CrysMAS's output, so this surrogate is a fast statistical
+  approximation of that slower finite-volume solver -- a standard,
+  well-established ML pattern -- not a model built from furnace
+  measurements. No heat-transfer, fluid-flow, or interface-thermodynamics
+  equations are encoded in *this* project's code (CrysMAS has its own, but
+  they were not supplied here, so none were invented).
 * Fast: well under 1ms per sample for all models, including GPR.
 * Provides calibrated predictive uncertainty (GPR standard deviation) for
   every prediction.
@@ -262,23 +287,29 @@ every KFold shuffle, and every stochastic model.
 
 ## 11. Limitations and future work
 
+* **The training data is simulated (CrysMAS), not physically measured.**
+  Every number in this repository describes how well these models fit
+  that simulation's output at 96 sampled operating points -- not how well
+  they predict a real furnace. Presenting this work (e.g. in a paper)
+  should say so explicitly; see Section 0 for the required citation.
 * **n = 96** is small. All CV and test-set numbers above should be
-  understood as measured on this specific 96-point designed experiment,
-  not validated against independent new experiments or real furnace runs.
+  understood as measured on this specific 96-point simulation design, not
+  validated against independent new simulation runs or physical
+  experiments.
 * The test split (~19 rows) gives high-variance test metrics; 5-fold CV
   on the 77-row training split is the more stable comparison basis and is
   what model selection is based on.
-* `D` (interface separation) is intrinsically harder to predict than Lc/Le
+* `D` (interface deflection) is intrinsically harder to predict than Lc/Le
   (R2 ~0.6-0.7 vs. >0.97) because it is a small difference of two larger,
   correlated quantities -- reported plainly, not hidden.
-* No governing physical equations were available for this project, so the
-  surrogate is purely data-driven. If Bridgman interface-position
-  equations become available, they could be incorporated as (a) a
-  physics-informed mean function in the GPR prior, or (b) monotonicity
-  constraints in the tree ensembles -- either would upgrade this from a
-  data-driven surrogate toward a hybrid digital twin, but neither is
-  implemented here since no such equations were supplied (inventing them
-  was explicitly out of scope).
+* No governing physical equations were supplied directly to this project
+  (only CrysMAS's simulated output was), so the surrogate is purely
+  data-driven. If Bridgman interface-position equations become available,
+  they could be incorporated as (a) a physics-informed mean function in
+  the GPR prior, or (b) monotonicity constraints in the tree ensembles --
+  either would upgrade this from a data-driven surrogate toward a hybrid
+  digital twin, but neither is implemented here since inventing such
+  equations was explicitly out of scope.
 * xgboost could not be installed in the development sandbox (see Section
   3); results labeled "XGBoost" throughout this repository were produced
   with the documented `GradientBoostingRegressor` substitute. Re-running
@@ -287,3 +318,16 @@ every KFold shuffle, and every stochastic model.
 * Extrapolation beyond the training T1..T5 grid (1195K-1275K across the
   five zones) is not validated and is flagged by `FastSurrogate`'s input
   validation, not silently extrapolated with confidence.
+
+## 12. Citation
+
+If you use this dataset (directly or via this pipeline) in a paper,
+report, or presentation, cite the original data source:
+
+> Zhang, Chang (2022), "Numerical simulation data of melt-crystal
+> interface position and deflection of BaBrCl in a 5-heater vertical
+> Bridgman furnace", Mendeley Data, V1, doi: 10.17632/4hr6cx2p8m.1
+
+Check the license terms on the [Mendeley dataset
+page](https://data.mendeley.com/datasets/4hr6cx2p8m/1) before
+republishing the data itself or any large derivative of it.
