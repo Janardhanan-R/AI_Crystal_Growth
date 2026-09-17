@@ -1,0 +1,7 @@
+target,regime,n_test,n_covered_95pct_interval,empirical_coverage,mean_interval_halfwidth
+Lc (m),original_only,15,15,1.0,0.0006778339419883284
+Lc (m),synthetic_augmented,15,15,1.0,0.0011444070947981134
+Le (m),original_only,15,14,0.9333333333333333,0.0008376833653102605
+Le (m),synthetic_augmented,15,15,1.0,0.001927682646673589
+D (m),original_only,15,15,1.0,0.0010520659150767787
+D (m),synthetic_augmented,15,15,1.0,0.002230647210797159
