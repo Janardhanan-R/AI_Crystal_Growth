@@ -1,0 +1,6 @@
+source,model,target,pooled_R2,pooled_MAE_mm
+Zhang & Cheng (2022),Model 1 (LR),P (avg. position),0.95,1.04
+Zhang & Cheng (2022),Model 2 (RF),P (avg. position),0.95,0.95
+Zhang & Cheng (2022),Model 3 (LR),D (deflection),0.32,0.43
+Zhang & Cheng (2022),Model 4 (RF),D (deflection),0.78,0.28
+This project,RandomForest,D (deflection),0.508,0.446

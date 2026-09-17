@@ -55,9 +55,22 @@ from src.evaluation import (
 )
 from src.model_comparison import build_comparison_table, select_best_model_per_target
 from src.surrogate import FastSurrogate
+from src.explainability import plot_shap_summary, SHAP_AVAILABLE
+from src.optimization import optimize_setpoints
 
 RANDOM_STATE = 42
 ALL_FEATURES = INPUT_FEATURES + ENGINEERED_FEATURES
+
+# Zhang & Cheng (2022) reported CV results, for direct comparison (their Figure 2 /
+# Section 3.1 text). They modeled P (average interface position) and D (deflection)
+# only, with Linear Regression (LR) and Random Forest (RF), 5-fold CV, pooled over
+# all 96 out-of-fold predictions -- the same statistic pooled_cv_metrics computes here.
+ZHANG_CHENG_2022_BASELINE = pd.DataFrame([
+    {"paper_model": "Model 1 (LR)", "paper_target": "P (avg. position)", "paper_R2": 0.95, "paper_MAE_mm": 1.04},
+    {"paper_model": "Model 2 (RF)", "paper_target": "P (avg. position)", "paper_R2": 0.95, "paper_MAE_mm": 0.95},
+    {"paper_model": "Model 3 (LR)", "paper_target": "D (deflection)", "paper_R2": 0.32, "paper_MAE_mm": 0.43},
+    {"paper_model": "Model 4 (RF)", "paper_target": "D (deflection)", "paper_R2": 0.78, "paper_MAE_mm": 0.28},
+])
 
 
 def section(title: str):
@@ -144,6 +157,42 @@ def main():
     multi_cv_df.to_csv("results/cv_results_multioutput.csv", index=False)
     indep_avg.to_csv("results/cv_results_independent_avg_across_targets.csv", index=False)
 
+    # ------------------------------------------------------------------- pooled-CV vs Zhang & Cheng (2022)
+    section("Pooled-CV comparison against Zhang & Cheng (2022) reported results")
+    print("Zhang & Cheng (2022) appear to report a POOLED-CV statistic (all out-of-fold\n"
+          "predictions from 5-fold CV combined into one R2/MAE), not a mean-of-folds\n"
+          "statistic (their Figure 2 plots all 96 out-of-fold predictions in one scatter\n"
+          "with a single R2/MAE annotation). cv_df already includes pooled_MAE/pooled_RMSE/\n"
+          "pooled_R2, computed the same way, on the same data, for direct comparison:")
+    print(ZHANG_CHENG_2022_BASELINE.to_string(index=False))
+    rf_d = cv_df[(cv_df["model"] == "RandomForest") & (cv_df["target"] == "D")]
+    comparison_rows = [
+        {
+            "source": "Zhang & Cheng (2022)", "model": prow["paper_model"],
+            "target": prow["paper_target"], "pooled_R2": prow["paper_R2"],
+            "pooled_MAE_mm": prow["paper_MAE_mm"],
+        }
+        for _, prow in ZHANG_CHENG_2022_BASELINE.iterrows()
+    ]
+    if not rf_d.empty:
+        row = rf_d.iloc[0]
+        print("\nThis project, RandomForest, D (deflection), same pooled-CV statistic:")
+        print(f"  pooled_R2  = {row['pooled_R2']:.3f}   (paper's RF/D: R2=0.78)")
+        print(f"  pooled_MAE = {row['pooled_MAE']*1000:.3f} mm   (paper's RF/D: MAE=0.28 mm)")
+        print(f"  [for reference] mean-of-folds R2 = {row['R2_mean']:.3f} +/- {row['R2_std']:.3f}")
+        print("This project does not model P directly (P is the algebraic average of Lc\n"
+              "and Le and was excluded from modeling per user confirmation -- see Section 0\n"
+              "of the README), so there is no direct P-row comparison; Lc and Le are each\n"
+              "individually harder to predict than their average P, which is expected since\n"
+              "averaging two noisy predictions reduces variance.")
+        comparison_rows.append({
+            "source": "This project", "model": "RandomForest", "target": "D (deflection)",
+            "pooled_R2": round(float(row["pooled_R2"]), 3),
+            "pooled_MAE_mm": round(float(row["pooled_MAE"]) * 1000, 3),
+        })
+    pd.DataFrame(comparison_rows).to_csv("results/zhang_cheng_2022_comparison.csv", index=False)
+    print("\nSaved to results/zhang_cheng_2022_comparison.csv")
+
     # ------------------------------------------------------------------- held-out test evaluation
     section("Held-out TEST SET evaluation (fit on train, evaluate once on test -- NOT used for model selection)")
     test_df, fitted = fit_and_evaluate_test(models, X_train, y_train, X_test, y_test, TARGETS)
@@ -172,6 +221,9 @@ def main():
     plot_gpr_uncertainty(fitted, X_test, y_test, TARGETS, "plots")
     print("Plots written to plots/")
 
+    section("STEP 16b: SHAP explainability (RandomForest, cf. Zhang & Cheng 2022 Fig. 3)")
+    plot_shap_summary(fitted, X_test, ALL_FEATURES, TARGETS, "plots")
+
     # ------------------------------------------------------------------- 13, 14
     section("STEP 13-14: Train final surrogate (selected model per target, refit on ALL data) and persist")
     best_model_names = dict(zip(best_df["target"], best_df["selected_model"]))
@@ -187,6 +239,36 @@ def main():
     surrogate = FastSurrogate.fit(per_target_pipelines, X_all, y_all)
     surrogate.save("models/fast_surrogate.joblib")
     print("Surrogate trained on all 96 rows (train+test) and saved to models/fast_surrogate.joblib")
+
+    # ------------------------------------------------------------------- inverse design demo
+    section("Inverse-design demo: optimize furnace set-points for a target outcome\n"
+            "(new contribution vs. Zhang & Cheng 2022's manual, non-systematic heuristic)")
+    target_outcome = {"D": 0.0}
+    print(f"Target: {target_outcome}  (a flat/undeflected interface, D = Lc-Le = 0, "
+          "i.e. minimal radial thermal stress at the growth interface)")
+    opt_result = optimize_setpoints(surrogate, target_outcome)
+    print(f"Recommended set-points (K): "
+          f"{ {k: round(v, 2) for k, v in opt_result.setpoints.items()} }")
+    print(f"Predicted outcome at these set-points: "
+          f"{ {k: round(v, 6) for k, v in opt_result.predictions.items()} }")
+    if opt_result.uncertainty:
+        print(f"Predictive uncertainty (std) at optimum: "
+              f"{ {k: round(v, 6) for k, v in opt_result.uncertainty.items()} }")
+    print(f"Converged: {opt_result.converged}  |  Objective value: {opt_result.objective_value:.6e}")
+    if opt_result.warnings:
+        print("Warnings:", opt_result.warnings)
+    pd.DataFrame([{
+        "target_D_m": 0.0,
+        **{f"setpoint_{k}_K": v for k, v in opt_result.setpoints.items()},
+        **{f"predicted_{k}_m": v for k, v in opt_result.predictions.items()},
+        "converged": opt_result.converged,
+    }]).to_csv("results/optimization_demo.csv", index=False)
+    print("Saved to results/optimization_demo.csv")
+    print("NOTE: this is a surrogate-driven recommendation for exploring the CrysMAS\n"
+          "response surface, not a validated furnace control instruction -- re-running\n"
+          "CrysMAS (or a physical trial) at these set-points is needed before acting on\n"
+          "it. See src/surrogate.py and src/optimization.py docstrings for the full\n"
+          "'what this is / is not' framing.")
 
     # ------------------------------------------------------------------- 15
     section("STEP 15: Fast prediction functionality (demo)")

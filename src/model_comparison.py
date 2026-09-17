@@ -19,6 +19,15 @@ def build_comparison_table(cv_df: pd.DataFrame, test_df: pd.DataFrame) -> pd.Dat
     cv["RMSE (CV mean ± std)"] = cv["RMSE_mean"].round(6).astype(str) + " ± " + cv["RMSE_std"].round(6).astype(str)
     cv["R2 (CV mean ± std)"] = cv["R2_mean"].round(4).astype(str) + " ± " + cv["R2_std"].round(4).astype(str)
     cv["CV fit time (s, mean)"] = cv["fit_time_mean_s"].round(4)
+    # Pooled-CV columns (see cross_validation.pooled_cv_metrics): a DIFFERENT statistic
+    # from the mean-of-folds columns above, reported for comparability with papers (e.g.
+    # Zhang & Cheng 2022) that pool out-of-fold predictions before scoring. Never used
+    # for model selection -- see select_best_model_per_target, which uses mean-of-folds only.
+    has_pooled = {"pooled_MAE", "pooled_RMSE", "pooled_R2"}.issubset(cv.columns)
+    if has_pooled:
+        cv["Pooled-CV MAE"] = cv["pooled_MAE"].round(6)
+        cv["Pooled-CV RMSE"] = cv["pooled_RMSE"].round(6)
+        cv["Pooled-CV R2"] = cv["pooled_R2"].round(4)
 
     test = test_df.copy()
     test["Test MAE"] = test["test_MAE"].round(6)
@@ -31,8 +40,10 @@ def build_comparison_table(cv_df: pd.DataFrame, test_df: pd.DataFrame) -> pd.Dat
     cols = [
         "target", "model",
         "MAE (CV mean ± std)", "RMSE (CV mean ± std)", "R2 (CV mean ± std)", "CV fit time (s, mean)",
-        "Test MAE", "Test RMSE", "Test R2", "Test train time (s)", "Inference time/sample (ms)",
     ]
+    if has_pooled:
+        cols += ["Pooled-CV MAE", "Pooled-CV RMSE", "Pooled-CV R2"]
+    cols += ["Test MAE", "Test RMSE", "Test R2", "Test train time (s)", "Inference time/sample (ms)"]
     return merged[cols].sort_values(["target", "model"]).reset_index(drop=True)
 
 
