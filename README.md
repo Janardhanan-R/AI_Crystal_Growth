@@ -60,8 +60,10 @@ sourced labeling. **Targets modeled: Lc, Le, D** (D = interface deflection).
 
 The Mendeley dataset above is the same dataset used in:
 
-> Zhang, C. & Cheng, X. (2022). [title as in the uploaded PDF], *IOP Conf.
-> Series: Materials Science and Engineering*, 1258, 012029.
+> Zhang, C. & Cheng, Q. (2022). "Predicting Melt-Crystal Interface Position
+> and Shape during the Manufacturing Process of Single Crystal via
+> Explainable Machine Learning Models," *IOP Conf. Series: Materials
+> Science and Engineering*, 1258, 012029.
 > doi: 10.1088/1757-899X/1258/1/012029
 
 That paper trained **2 models** (Linear Regression, Random Forest) on
@@ -313,7 +315,40 @@ detects `shap`'s absence at import time, prints a clear message, and skips
 without affecting the rest of the pipeline (confirmed by an end-to-end run
 of `main.py` in this sandbox). It will produce real SHAP plots as soon as
 it is run with `shap` installed (`pip install shap`, or uncomment it in
-`requirements.txt`) -- no code changes needed.
+`requirements.txt`) -- no code changes needed. (It has since been run
+successfully outside the sandbox, with real SHAP plots produced -- see
+the comparison below.)
+
+**Comparison to Zhang & Cheng's own SHAP result (their Figure 3(d), Model
+4).** They report, in their own words, that for interface deflection D:
+*"T2 has the strongest impact ... followed by T4, T3, T1, and T5."*
+Restricting this project's SHAP output to the same raw T1..T5 features
+(excluding the engineered features, which their model did not have) gives
+**T2 > T4 > T5 > T3 > T1**. The top two drivers match exactly between the
+two independently-trained models on two different data splits -- both
+find T2 (upper heater) and T4 (lower heater) dominate interface
+deflection by a wide margin over the rest. The bottom three (T3, T1, T5)
+reshuffle between the two studies, but both agree they are minor
+contributors; this is consistent with fold-to-fold / seed-to-seed noise
+on genuinely small effects, not a disagreement about the physics. For
+interface position, their Figure 3(b) similarly finds T2 strongest,
+"followed by T3 and T4," with T1/T5 much weaker -- this project's raw-T
+ranking for Lc (T2 > T3 > T4 > T1 > T5) and Le (T3 > T2 > T1 > T5 > T4)
+again puts the same trio (T2, T3, T4) ahead of the same pair (T1, T5),
+consistent with their finding.
+
+**What the engineered features add that raw T1..T5 alone could not
+show**: Zhang & Cheng's models take only the five raw set-points as
+input, so their SHAP analysis is structurally limited to ranking T1..T5
+against each other. This project's engineered features rank *above* the
+raw temperatures for Lc and Le: `T_mean` and `dT_12` are the top two SHAP
+features for both targets, ahead of every individual raw heater
+temperature, and `dT_12` ranks third for D, ahead of three of the five
+raw temperatures. This indicates that the overall thermal level and the
+zone 1-2 gradient carry explanatory signal beyond what the raw set-points
+convey individually -- a finding their feature set could not have
+surfaced, and a concrete point of methodological differentiation for a
+paper (see Section 1).
 
 ## 12. Fast surrogate model (`src/surrogate.py`)
 
@@ -489,8 +524,10 @@ was published with:
 > interface position and deflection of BaBrCl in a 5-heater vertical
 > Bridgman furnace", Mendeley Data, V1, doi: 10.17632/4hr6cx2p8m.1
 
-> Zhang, C. & Cheng, X. (2022). *IOP Conf. Series: Materials Science and
-> Engineering*, 1258, 012029. doi: 10.1088/1757-899X/1258/1/012029
+> Zhang, C. & Cheng, Q. (2022). "Predicting Melt-Crystal Interface Position
+> and Shape during the Manufacturing Process of Single Crystal via
+> Explainable Machine Learning Models," *IOP Conf. Series: Materials
+> Science and Engineering*, 1258, 012029. doi: 10.1088/1757-899X/1258/1/012029
 
 Check the license terms on the [Mendeley dataset
 page](https://data.mendeley.com/datasets/4hr6cx2p8m/1) before
