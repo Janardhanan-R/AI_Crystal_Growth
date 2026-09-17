@@ -1,4 +1,4 @@
 target,selected_model,avg_rank,CV_MAE_mean,CV_RMSE_mean,CV_R2_mean,CV_fit_time_mean_s
-D,GaussianProcess,1.0,0.000334,0.000536,0.6648,0.0943
-Lc,GaussianProcess,1.0,0.000395,0.000517,0.9938,0.0623
-Le,GaussianProcess,1.0,0.000667,0.000914,0.9769,0.0819
+D,GaussianProcess,1.0,0.000334,0.000536,0.6648,0.033
+Lc,GaussianProcess,1.0,0.000395,0.000517,0.9938,0.0306
+Le,GaussianProcess,1.0,0.000667,0.000914,0.9769,0.0365

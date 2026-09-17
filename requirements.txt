@@ -11,7 +11,7 @@ scipy>=1.10
 # installed, the real XGBRegressor is used; otherwise it falls back to
 # sklearn.ensemble.GradientBoostingRegressor, clearly logged as a
 # substitution (see src/models.py). To use genuine XGBoost, uncomment:
-# xgboost>=2.0
+xgboost>=2.0
 
 # shap is optional. The code auto-detects it at import time: if installed,
 # src/explainability.py produces SHAP summary plots for the RandomForest
