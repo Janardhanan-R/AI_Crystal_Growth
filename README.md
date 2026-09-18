@@ -6,8 +6,8 @@ a 5-heater vertical Bridgman furnace, from the five heater set-point
 temperatures (**T1..T5**), compares seven regression models under 5-fold
 cross-validation, and packages the best model per target as a fast
 surrogate for exploring the simulation's response surface -- with SHAP
-explainability and a surrogate-driven inverse-design (optimization) module
-on top.
+explainability, a surrogate-driven inverse-design (optimization) module,
+and a candidate-exploration module (Section 14) on top.
 
 ## 0. Data source and a critical correction to the original project brief -- read this first
 
@@ -436,7 +436,132 @@ physical trial) at these set-points is needed before acting on it. See
 the "what this is / is not" framing in Section 12 and in
 `src/optimization.py`'s module docstring.
 
-## 14. Project structure
+## 14. Candidate exploration (`src/candidate_exploration.py`) -- new, optional
+
+**What it is.** A broader-coverage complement to Section 13's optimizer:
+instead of searching for one single best set-point combination, it
+generates a large batch (1000 by default) of VIRTUAL heater-setpoint
+candidates, evaluates every one of them with the already-trained
+`FastSurrogate` (no retraining), flags how well each is supported by the
+original 96-row dataset, and produces several ranked views over the whole
+population. Use the optimizer (Section 13) when you want the single best
+point for a specific target; use candidate exploration when you want to
+see the shape of the surrogate's response surface, sanity-check the
+optimizer's answer against nearby alternatives, or screen a shortlist by
+hand.
+
+**It is not** a new model (every prediction comes from the same persisted
+GPR surrogate), a physical validation (see the caveats below), or a source
+of a "confirmed optimum" -- every output file and plot says so explicitly.
+
+**Sampling.** T1..T5 are sampled within each heater's *observed training
+range* (`surrogate.feature_ranges`, i.e. the real range in `data/Table.csv`
+-- never hardcoded), by default uniformly at random; Latin hypercube
+sampling is available (`--candidate-sampling lhs`) for better space-filling
+at a fixed budget. Candidates are rejection-sampled until they satisfy the
+same physical ordering constraint used everywhere else in this project,
+`T1 >= T2 >= T3 >= T4 >= T5` (Zhang & Cheng 2022, Section 2.2.2), and
+near-duplicate candidates (T1..T5 matching to 4 decimal places) are
+dropped. Generated candidates are explicitly marked
+`is_physically_validated: false` everywhere they appear.
+
+**Support / extrapolation checks.** Every candidate gets:
+* per-heater in-range flags against the observed training range,
+* an ordering-constraint-satisfied flag,
+* an inside-the-training-data's-5-D-convex-hull flag, computed with
+  `scipy.spatial.Delaunay` (verified to run successfully on this dataset:
+  96 points, 42 hull vertices in 5-D -- if it ever fails on a different
+  dataset, e.g. a `QhullError` on a near-degenerate point cloud, this is
+  caught and recorded as "convex-hull screening unavailable" rather than
+  producing a fabricated answer), and
+* a single `support_category`: `in_range`, `outside_range`,
+  `outside_convex_hull`, or `invalid_constraint`.
+
+**Honest finding from this dataset specifically**: because the original 96
+rows are a constrained *factorial* design that already includes the
+extreme corner combinations, every candidate that is in-range and
+ordering-valid was also found to be inside the convex hull in every run
+performed here -- i.e. for this particular dataset, convex-hull screening
+did not further discriminate beyond the simpler range + ordering checks.
+This is reported as observed, not assumed to hold for any future dataset
+this module might be pointed at. Being "in_range" and "inside the convex
+hull" means a candidate is well-*supported* by the training sample -- it is
+never treated as proof that the GPR prediction there is accurate, and it is
+never described as physically validated.
+
+**Uncertainty.** GPR predictive standard deviation (the same quantity used
+throughout this project, e.g. Section 13's optimizer) is recorded per
+target. **This is a model-internal uncertainty estimate, not a calibrated
+physical confidence interval** -- no study has checked GPR interval
+coverage against independent CrysMAS runs. An `aggregate_uncertainty` score
+(mean of each target's uncertainty, each min-max normalized *within the
+current candidate set*) is provided as one transparent, documented
+combination; a `high_uncertainty_flag` marks candidates at or above a
+configurable percentile (default: 90th) of that same set's own aggregate
+uncertainty -- an explicit relative screening rule, not an absolute or
+cross-run threshold.
+
+**Objectives.** Three configurable framings: `flat_interface` /
+`low_deflection` (minimize |predicted D|) and `multi_objective` (a
+documented, weighted combination of normalized |D|, normalized aggregate
+uncertainty, and a binary support penalty; default weights 0.5/0.3/0.2, set
+via `ExplorationConfig.multi_objective_weights`). **Minimizing D is a
+surrogate-defined interface-shape objective (a flat, undeflected
+melt-crystal interface) -- it is not, on its own, a proven proxy for
+minimum thermal stress or crystal quality.**
+
+**Ranking.** Multiple explicit ranking views (`abs_D`, `uncertainty`,
+`screening_score`), each computable with `supported_only=True/False`; top-5/
+10/20 tables are produced per view without padding a short ranking with
+extra, unlabeled rows when fewer valid candidates exist.
+
+**Outputs**: `results/candidate_exploration_all.csv` (every candidate, every
+column), `results/candidate_exploration_top10.csv` (top 10 by |D|, the
+default ranking), `results/candidate_exploration_summary.json` (counts,
+thresholds, bounds used, and the same honesty caveats as here). Plots in
+`plots/candidate_exploration/`: predicted-D distribution, |D| vs.
+uncertainty, top-candidate bar charts, and a T1..T5 pairwise plot -- every
+plot visually distinguishes candidates with a support warning and none
+implies experimental or CrysMAS validation. **None of these files are ever
+written over `results/optimization_demo.csv`** (Section 13's output) --
+they use distinct filenames.
+
+**Running it**:
+```bash
+python3 main.py                                  # full pipeline, candidate exploration runs last (1000 candidates)
+python3 main.py --skip-candidate-exploration      # full pipeline, skip the new step
+python3 main.py --candidates-only                 # skip training entirely; requires an
+                                                    # already-persisted models/fast_surrogate.joblib
+python3 main.py --candidates-only --n-candidates 5000 --candidate-sampling lhs
+```
+
+**Testing**: `tests/test_candidate_exploration.py` (29 tests: bounds,
+ordering constraint, no-duplicates, reproducibility with a fixed seed,
+feature-engineering consistency with `src/feature_engineering.py`,
+prediction-column presence, support-flag correctness (including injected
+out-of-range / ordering-violation cases), convex-hull screening success,
+percentile-based uncertainty flagging, configurable multi-objective
+weighting, ranking order, un-padded top-n views, correct CSV/JSON export,
+non-overwrite of `optimization_demo.csv`, an end-to-end run, and
+confirmation that the surrogate is never mutated). Run with
+`python3 -m unittest discover tests -v` (works with the stdlib alone) or
+`pytest tests/test_candidate_exploration.py -v` if pytest is installed.
+
+**Limitations (in addition to every limitation in Section 15 below, which
+apply identically here since this module uses the same surrogate)**: this
+is a screening tool over a simulation-trained surrogate, not a validated
+furnace controller; extrapolation beyond the observed T1..T5 range is
+avoided by construction (bounds default to the training range) but a
+candidate can still be a genuine, unseen interpolation the GPR has not been
+checked against; GPR uncertainty is uncalibrated (see above); and the
+convex-hull check, while numerically verified on this dataset, is not
+guaranteed to remain informative if the underlying dataset changes shape
+(e.g. becomes less of a full factorial design) -- re-verify
+`convex_hull_screening_available` in the summary JSON after any data
+change. **CrysMAS re-simulation or a physical trial is required before any
+candidate from this module is used to inform an actual furnace run.**
+
+## 15. Project structure
 
 ```
 crystal_growth_ml/
@@ -451,13 +576,18 @@ crystal_growth_ml/
 │   ├── model_comparison.py         # comparison table + CV-only selection
 │   ├── surrogate.py                # FastSurrogate: predict/validate/persist
 │   ├── explainability.py           # SHAP summary plots (optional dependency)
-│   └── optimization.py             # surrogate-driven inverse design
+│   ├── optimization.py             # surrogate-driven inverse design (single best point)
+│   ├── candidate_exploration.py    # candidate exploration (generate/evaluate/rank many points)
+│   └── candidate_exploration_plots.py  # plots for the above
+├── tests/
+│   └── test_candidate_exploration.py   # 29 tests, see Section 14
 ├── models/fast_surrogate.joblib    # trained, persisted surrogate
-├── results/*.csv                   # every numeric table referenced above
+├── results/*.csv, *.json           # every numeric table referenced above, incl. candidate_exploration_*
 ├── plots/*.png                     # every plot referenced above
+│   └── candidate_exploration/*.png # candidate-exploration plots (Section 14)
 ├── requirements.txt
 ├── README.md
-└── main.py                         # runs the full pipeline, in order
+└── main.py                         # runs the full pipeline, in order (--help for options)
 ```
 
 Run everything with:
@@ -468,9 +598,10 @@ python3 main.py
 ```
 
 Reproducibility: `RANDOM_STATE = 42` is used for the train/test split,
-every KFold shuffle, and every stochastic model.
+every KFold shuffle, and every stochastic model (candidate exploration uses
+its own, separately documented seed -- see Section 14).
 
-## 15. Limitations and future work
+## 16. Limitations and future work
 
 * **The training data is simulated (CrysMAS), not physically measured.**
   Every number in this repository describes how well these models fit
@@ -513,8 +644,13 @@ every KFold shuffle, and every stochastic model.
   it has not been validated by re-running CrysMAS at the recommended
   set-points, and should be treated as a screening suggestion, not a
   furnace instruction.
+* Candidate exploration (Section 14) inherits every limitation above,
+  since it uses the same surrogate; it additionally reports GPR
+  uncertainty as an uncalibrated, model-internal signal and convex-hull
+  support as a geometric (not statistical or physical) check -- see
+  Section 14's own limitations paragraph for the full detail.
 
-## 16. Citation
+## 17. Citation
 
 If you use this dataset (directly or via this pipeline) in a paper,
 report, or presentation, cite the original data source and the paper it

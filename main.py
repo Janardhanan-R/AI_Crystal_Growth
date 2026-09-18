@@ -25,9 +25,18 @@ run in the exact order specified for this project:
 Run with:  python3 main.py
 Reproducibility: a single RANDOM_STATE (42) is used everywhere -- data
 split, KFold shuffling, and every stochastic model.
+
+Candidate exploration (new, optional step 18 -- see README "Candidate
+Exploration" section): generates, evaluates, and ranks many VIRTUAL
+heater-setpoint candidates with the already-trained surrogate. It never
+retrains any model. Runs by default as the final pipeline step; skip it
+with --skip-candidate-exploration, or run it standalone against the
+already-persisted surrogate (no retraining, much faster) with
+--candidates-only. See `python3 main.py --help`.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import warnings
 
@@ -57,6 +66,7 @@ from src.model_comparison import build_comparison_table, select_best_model_per_t
 from src.surrogate import FastSurrogate
 from src.explainability import plot_shap_summary, SHAP_AVAILABLE
 from src.optimization import optimize_setpoints
+from src.candidate_exploration import ExplorationConfig, run_candidate_exploration
 
 RANDOM_STATE = 42
 ALL_FEATURES = INPUT_FEATURES + ENGINEERED_FEATURES
@@ -79,8 +89,75 @@ def section(title: str):
     print("=" * 78)
 
 
-def main():
-    # ---------------------------------------------------------------- 1, 2
+def parse_args(argv=None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Bridgman crystal-growth ML surrogate pipeline. By default runs the "
+                     "full training pipeline (steps 1-17) and then candidate exploration "
+                     "(step 18) as an optional final step."
+    )
+    p.add_argument("--skip-candidate-exploration", action="store_true",
+                    help="Run the full training pipeline but skip candidate exploration at the end.")
+    p.add_argument("--candidates-only", action="store_true",
+                    help="Skip the full training pipeline entirely and run ONLY candidate "
+                         "exploration against the already-persisted surrogate at "
+                         "models/fast_surrogate.joblib (fast -- no retraining). Fails with a "
+                         "clear error if that file does not exist yet.")
+    p.add_argument("--n-candidates", type=int, default=1000,
+                    help="Number of virtual candidates to generate (default: 1000).")
+    p.add_argument("--candidate-seed", type=int, default=42,
+                    help="Random seed for candidate generation (default: 42).")
+    p.add_argument("--candidate-sampling", choices=["uniform", "lhs"], default="uniform",
+                    help="Sampling strategy for candidate T1..T5 (default: uniform).")
+    p.add_argument("--candidate-objective", choices=["flat_interface", "low_deflection", "multi_objective"],
+                    default="multi_objective",
+                    help="Which objective framing to record for exported candidates (default: multi_objective).")
+    return p.parse_args(argv)
+
+
+def run_candidates_only(args: argparse.Namespace):
+    """Fast path: load the already-persisted surrogate and run candidate
+    exploration only, without re-running the full training pipeline."""
+    import os
+    section("Candidates-only mode: loading persisted surrogate (no retraining)")
+    surrogate_path = "models/fast_surrogate.joblib"
+    if not os.path.exists(surrogate_path):
+        raise FileNotFoundError(
+            f"{surrogate_path} not found. --candidates-only requires a previously-trained "
+            "surrogate -- run `python3 main.py` (without --candidates-only) at least once first."
+        )
+    surrogate = FastSurrogate.load(surrogate_path)
+    print(f"Loaded surrogate: targets={surrogate.targets}, features={surrogate.feature_names}")
+    _run_candidate_exploration_step(surrogate, args)
+
+
+def _run_candidate_exploration_step(surrogate, args: argparse.Namespace):
+    section("STEP 18: Candidate exploration (screening tool, complements src/optimization.py)")
+    print("Generating, evaluating, and ranking virtual heater-setpoint candidates with the\n"
+          "ALREADY-TRAINED surrogate -- no model is retrained in this step. This complements,\n"
+          "and does not replace, the single-best-point inverse-design search in STEP 13's demo\n"
+          "above (src/optimization.py). See README 'Candidate Exploration' section for the full\n"
+          "methodology, limitations, and the difference between the two tools.")
+    config = ExplorationConfig(
+        n_samples=args.n_candidates,
+        random_state=args.candidate_seed,
+        sampling_strategy=args.candidate_sampling,
+        objective=args.candidate_objective,
+    )
+    candidates = run_candidate_exploration(surrogate, config, output_dir="results",
+                                            plots_dir="plots/candidate_exploration")
+    counts = candidates["support_category"].value_counts().to_dict()
+    print(f"Support category breakdown: {counts}")
+    print("REMINDER: no candidate above is a confirmed CrysMAS result, a confirmed optimum, "
+          "or a validated furnace instruction -- see results/candidate_exploration_summary.json "
+          "and README 'Candidate Exploration' for the required caveats before acting on any of them.")
+    return candidates
+
+
+def main(args: argparse.Namespace | None = None):
+    args = args or parse_args([])
+    if args.candidates_only:
+        run_candidates_only(args)
+        return
     section("STEP 1-2: Load raw dataset and verify targets")
     df_raw = load_raw("data/Table.csv")
     print(f"Loaded data/Table.csv: {df_raw.shape[0]} rows x {df_raw.shape[1]} columns")
@@ -286,8 +363,14 @@ def main():
     else:
         print("No input/output validation warnings for this demo batch.")
 
+    # ------------------------------------------------------------------- 18 (optional)
+    if args.skip_candidate_exploration:
+        section("STEP 18: Candidate exploration SKIPPED (--skip-candidate-exploration)")
+    else:
+        _run_candidate_exploration_step(surrogate, args)
+
     section("Pipeline complete. See results/, plots/, and models/ for all outputs.")
 
 
 if __name__ == "__main__":
-    main()
+    main(parse_args())
