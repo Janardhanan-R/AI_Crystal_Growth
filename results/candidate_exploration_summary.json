@@ -27,7 +27,7 @@
     ]
   },
   "convex_hull_screening_available": true,
-  "uncertainty_flag_threshold": 0.9074052585776321,
+  "uncertainty_flag_threshold": 0.9074052585774928,
   "uncertainty_flag_percentile": 90.0,
   "n_supported_in_range": 1000,
   "support_category_counts": {

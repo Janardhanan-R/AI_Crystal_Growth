@@ -1,0 +1,12 @@
+variant,CV_R2_mean,CV_R2_std,CV_MAE_mean,Pooled_R2
+A. GPR RBF+Matern sum,0.6655,0.1004,0.000334,0.713
+BASELINE: GaussianProcess (current),0.6648,0.101,0.000334,0.7126
+"B. GPR, raw T1-T5 only (no engineered features)",0.6394,0.153,0.000337,0.7162
+A. GPR anisotropic RBF (per-feature length scale),0.6078,0.3135,0.000331,0.558
+A. GPR Matern(nu=2.5),0.5864,0.1433,0.000355,0.6539
+C. GPR on T1-T5 pairwise interactions (15 feats),0.5799,0.133,0.000371,0.6496
+"B. GPR, raw T1-T5 + dT_15 + T_mean only",0.5711,0.1857,0.00037,0.6646
+A. GPR Matern(nu=1.5),0.5452,0.1736,0.000369,0.6216
+BASELINE: HistGradientBoosting (current),0.4922,0.1276,0.000434,0.5717
+BASELINE: RandomForest (current),0.4092,0.2389,0.00047,0.4871
+D. Stacking (GPR+RF+HistGB -> Ridge),-0.1218,0.1187,0.000798,-0.0406
